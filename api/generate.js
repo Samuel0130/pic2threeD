@@ -67,9 +67,13 @@ function allowedImage(mime) {
   return mime === 'image/jpeg' || mime === 'image/png' || mime === 'image/jpg';
 }
 
-function fileTypeForTripo(mime) {
-  if (mime === 'image/png') return 'png';
-  return 'jpg';
+/**
+ * 与官方 Python SDK `_image_to_file_content` 一致：带 `file_token` 时 `type` 恒为 `jpg`，
+ * 不得按原图写成 png（否则会 1004）。见：
+ * https://github.com/VAST-AI-Research/tripo-python-sdk/blob/master/tripo3d/client.py
+ */
+function fileDescriptorFromToken(fileToken) {
+  return { type: 'jpg', file_token: fileToken };
 }
 
 module.exports = async function handler(req, res) {
@@ -144,25 +148,18 @@ module.exports = async function handler(req, res) {
       tokens.push(token);
     }
 
-    const ft = fileTypeForTripo(parts[0].mime);
     let taskBody;
     if (tokens.length === 1) {
       taskBody = {
         type: 'image_to_model',
         model_version: modelVersion,
-        file: {
-          type: ft,
-          file_token: tokens[0],
-        },
+        file: fileDescriptorFromToken(tokens[0]),
       };
     } else {
       taskBody = {
         type: 'multiview_to_model',
         model_version: modelVersion,
-        files: tokens.map((t, idx) => ({
-          type: fileTypeForTripo(parts[idx].mime),
-          file_token: t,
-        })),
+        files: tokens.map((t) => fileDescriptorFromToken(t)),
       };
     }
 
