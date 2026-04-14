@@ -517,6 +517,14 @@
         let currentEnv = 0;
         const environments = ['neutral', 'legacy', 'night', 'creek', 'dawn'];
 
+        /** 与官方 Python SDK 默认一致：https://github.com/VAST-AI-Research/tripo-python-sdk */
+        const TRIPO_MODEL_VERSION = 'v2.5-20250123';
+
+        function tripoApiError(prefix, data) {
+            const sug = data.suggestion ? ` — ${data.suggestion}` : '';
+            return `${prefix}: ${data.message || JSON.stringify(data)}${sug}`;
+        }
+
         /** http(s) 部署（如 Vercel）走同源代理，密钥在服务端；file:// 本地打开则直连 Tripo 并用手动填写的 Key */
         const useServerProxy = window.location.protocol === 'http:' || window.location.protocol === 'https:';
         /** 代理使用固定文件名 /api/tripo-proxy（避免 Vercel 对 api/tripo/[...path] 动态路由 404） */
@@ -678,11 +686,15 @@
 
             const data = await response.json();
             if (data.code !== 0) {
-                throw new Error(`上传失败: ${data.message}`);
+                throw new Error(tripoApiError('上传失败', data));
             }
 
-            addLog(`图片上传成功: ${data.data.image_token}`, 'success');
-            return data.data.image_token;
+            const token = data.data.image_token || data.data.file_token;
+            if (!token) {
+                throw new Error('上传成功但未返回 image_token / file_token');
+            }
+            addLog(`图片上传成功: ${token}`, 'success');
+            return token;
         }
 
         // 创建生成任务
@@ -692,9 +704,10 @@
             let requestBody;
             
             if (imageTokens.length === 1) {
-                // 单图模式
+                // 单图模式（须含 model_version，否则易返回 code 1004）
                 requestBody = {
                     type: 'image_to_model',
+                    model_version: TRIPO_MODEL_VERSION,
                     file: {
                         type: 'jpg',
                         file_token: imageTokens[0]
@@ -704,7 +717,8 @@
                 // 多图模式
                 requestBody = {
                     type: 'multiview_to_model',
-                    files: imageTokens.map(token => ({
+                    model_version: TRIPO_MODEL_VERSION,
+                    files: imageTokens.map((token) => ({
                         type: 'jpg',
                         file_token: token
                     }))
@@ -727,7 +741,7 @@
 
             const data = await response.json();
             if (data.code !== 0) {
-                throw new Error(`创建任务失败: ${data.message}`);
+                throw new Error(tripoApiError('创建任务失败', data));
             }
 
             addLog(`任务创建成功: ${data.data.task_id}`, 'success');
@@ -751,7 +765,7 @@
 
                 const data = await response.json();
                 if (data.code !== 0) {
-                    throw new Error(`查询失败: ${data.message}`);
+                    throw new Error(tripoApiError('查询失败', data));
                 }
 
                 const task = data.data;
