@@ -1,0 +1,9 @@
+{
+  "name": "pic2threed",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tripo 图片转 3D — Vercel 部署",
+  "dependencies": {
+    "raw-body": "^2.5.2"
+  }
+}

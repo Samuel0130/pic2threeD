@@ -1,0 +1,863 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta name="x-poe-datastore-behavior" content="local_only"><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com https://api.tripo3d.ai https://*.tripo3d.ai; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 图片转 3D 模型生成器</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+
+        /* API 配置区 */
+        .api-config {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .api-config h3 {
+            margin-bottom: 15px;
+            font-size: 1rem;
+            color: #94a3b8;
+        }
+
+        .api-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .input-group label {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+
+        .input-group input {
+            padding: 12px 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.3);
+            color: #fff;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+
+        /* 上传区域 */
+        .upload-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 2px dashed rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+
+        .upload-section.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .upload-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-header p {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .upload-btn {
+            display: block;
+            margin: 0 auto;
+            padding: 14px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        /* 图片预览 */
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .preview-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.3);
+        }
+
+        .preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .preview-item .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.9);
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: transform 0.2s;
+        }
+
+        .preview-item .remove-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* 生成按钮 */
+        .generate-section {
+            text-align: center;
+            margin: 25px 0;
+        }
+
+        .generate-btn {
+            padding: 16px 50px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border: none;
+            border-radius: 14px;
+            color: white;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .generate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 进度显示 */
+        .progress-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .progress-section.active {
+            display: block;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .progress-title {
+            font-weight: 600;
+        }
+
+        .progress-percent {
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #34d399);
+            border-radius: 4px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        .progress-status {
+            margin-top: 12px;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .progress-log {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+
+        .progress-log .log-item {
+            margin-bottom: 5px;
+            padding-left: 15px;
+            position: relative;
+        }
+
+        .progress-log .log-item::before {
+            content: "›";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+        }
+
+        .progress-log .log-item.error {
+            color: #ef4444;
+        }
+
+        .progress-log .log-item.error::before {
+            color: #ef4444;
+            content: "✗";
+        }
+
+        .progress-log .log-item.success {
+            color: #10b981;
+        }
+
+        .progress-log .log-item.success::before {
+            content: "✓";
+        }
+
+        /* 3D 查看器 */
+        .viewer-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 20px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .viewer-section.active {
+            display: block;
+        }
+
+        .viewer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .viewer-header h3 {
+            font-size: 1.1rem;
+        }
+
+        .download-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .viewer-container {
+            width: 100%;
+            height: 450px;
+            background: linear-gradient(145deg, #1e293b, #0f172a);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        model-viewer {
+            width: 100%;
+            height: 100%;
+        }
+
+        .viewer-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .control-btn.active {
+            background: rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+        }
+
+        /* 错误提示 */
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            color: #fca5a5;
+            display: none;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 1.5rem; }
+            .api-inputs { grid-template-columns: 1fr; }
+            .viewer-container { height: 300px; }
+            .preview-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 AI 图片转 3D 模型</h1>
+        <p class="subtitle">上传图片，使用 Tripo AI 自动生成 3D 模型</p>
+
+        <!-- API 配置：file:// 本地打开时显示；部署到 Vercel 后使用环境变量 -->
+        <div class="api-config" id="apiConfigPanel">
+            <h3>🔑 API 配置</h3>
+            <p id="apiConfigHint" style="display:none;color:#94a3b8;font-size:0.88rem;line-height:1.55;margin-bottom:14px">
+                已通过服务端环境变量配置 <code style="color:#cbd5e1">TRIPO_API_KEY</code>（必填）与 <code style="color:#cbd5e1">TRIPO_CLIENT_ID</code>（可选），请求经本站 <code style="color:#cbd5e1">/api/tripo</code> 代理，密钥不会下发到浏览器。
+            </p>
+            <div class="api-inputs" id="apiKeyFields">
+                <div class="input-group">
+                    <label>API Key（仅本地 file 打开时需要）</label>
+                    <input type="password" id="apiKey" placeholder="本地直连 Tripo 时填写 API Key">
+                </div>
+                <div class="input-group">
+                    <label>Client ID（可选，仅本地直连）</label>
+                    <input type="text" id="clientId" placeholder="若 Tripo 要求可填写">
+                </div>
+            </div>
+        </div>
+
+        <!-- 上传区域 -->
+        <div class="upload-section" id="uploadSection">
+            <div class="upload-header">
+                <div class="upload-icon">📸</div>
+                <h3>上传图片</h3>
+                <p>支持 JPG、PNG 格式，可上传 1-8 张图片用于多视角生成</p>
+            </div>
+            <label class="upload-btn">
+                选择图片
+                <input type="file" class="file-input" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple="">
+            </label>
+            <div class="preview-grid" id="previewGrid"></div>
+        </div>
+
+        <!-- 生成按钮 -->
+        <div class="generate-section">
+            <button class="generate-btn" id="generateBtn" disabled="">
+                🚀 生成 3D 模型
+            </button>
+        </div>
+
+        <!-- 错误提示 -->
+        <div class="error-message" id="errorMessage"></div>
+
+        <!-- 进度显示 -->
+        <div class="progress-section" id="progressSection">
+            <div class="progress-header">
+                <span class="progress-title">⏳ 生成中...</span>
+                <span class="progress-percent" id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-status" id="progressStatus">正在初始化...</div>
+            <div class="progress-log" id="progressLog"></div>
+        </div>
+
+        <!-- 3D 查看器 -->
+        <div class="viewer-section" id="viewerSection">
+            <div class="viewer-header">
+                <h3>✨ 生成完成</h3>
+                <button class="download-btn" id="downloadBtn">📥 下载 GLB</button>
+            </div>
+            <div class="viewer-container">
+                <model-viewer id="modelViewer" alt="生成的 3D 模型" camera-controls="" auto-rotate="" shadow-intensity="1" environment-image="neutral" exposure="1" camera-orbit="45deg 75deg auto">
+                </model-viewer>
+            </div>
+            <div class="viewer-controls">
+                <button class="control-btn active" id="rotateBtn">🔄 自动旋转</button>
+                <button class="control-btn" id="resetBtn">🎯 重置视角</button>
+                <button class="control-btn" id="envBtn">💡 切换光照</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 元素引用
+        const apiKeyInput = document.getElementById('apiKey');
+        const clientIdInput = document.getElementById('clientId');
+        const apiConfigHint = document.getElementById('apiConfigHint');
+        const apiKeyFields = document.getElementById('apiKeyFields');
+        const uploadSection = document.getElementById('uploadSection');
+        const fileInput = document.getElementById('fileInput');
+        const previewGrid = document.getElementById('previewGrid');
+        const generateBtn = document.getElementById('generateBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const progressSection = document.getElementById('progressSection');
+        const progressFill = document.getElementById('progressFill');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressLog = document.getElementById('progressLog');
+        const viewerSection = document.getElementById('viewerSection');
+        const modelViewer = document.getElementById('modelViewer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const rotateBtn = document.getElementById('rotateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const envBtn = document.getElementById('envBtn');
+
+        // 状态
+        let uploadedFiles = [];
+        let currentModelUrl = null;
+        let isRotating = true;
+        let currentEnv = 0;
+        const environments = ['neutral', 'legacy', 'night', 'creek', 'dawn'];
+
+        /** http(s) 部署（如 Vercel）走同源代理，密钥在服务端；file:// 本地打开则直连 Tripo 并用手动填写的 Key */
+        const useServerProxy = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+        const TRIPO_API_BASE = useServerProxy
+            ? `${window.location.origin}/api/tripo/v2/openapi`
+            : 'https://api.tripo3d.ai/v2/openapi';
+
+        if (useServerProxy) {
+            apiConfigHint.style.display = 'block';
+            apiKeyFields.style.display = 'none';
+        }
+
+        function tripAuthHeaders() {
+            if (useServerProxy) return {};
+            const k = apiKeyInput.value.trim();
+            const h = { Authorization: `Bearer ${k}` };
+            const cid = clientIdInput.value.trim();
+            if (cid) h['X-Client-Id'] = cid;
+            return h;
+        }
+
+        // 拖拽上传
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.classList.add('dragover');
+        });
+
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('dragover');
+        });
+
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // 文件选择
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            const validFiles = Array.from(files).filter(f => 
+                f.type.startsWith('image/') && uploadedFiles.length + 1 <= 8
+            );
+            
+            validFiles.forEach(file => {
+                if (uploadedFiles.length < 8) {
+                    uploadedFiles.push(file);
+                    addPreview(file);
+                }
+            });
+
+            updateGenerateBtn();
+        }
+
+        function addPreview(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const div = document.createElement('div');
+                div.className = 'preview-item';
+                div.innerHTML = `
+                    <img src="${e.target.result}" alt="预览">
+                    <button class="remove-btn" data-index="${uploadedFiles.length - 1}">×</button>
+                `;
+                previewGrid.appendChild(div);
+
+                div.querySelector('.remove-btn').addEventListener('click', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    uploadedFiles.splice(index, 1);
+                    rebuildPreviews();
+                    updateGenerateBtn();
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function rebuildPreviews() {
+            previewGrid.innerHTML = '';
+            uploadedFiles.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const div = document.createElement('div');
+                    div.className = 'preview-item';
+                    div.innerHTML = `
+                        <img src="${e.target.result}" alt="预览">
+                        <button class="remove-btn" data-index="${index}">×</button>
+                    `;
+                    previewGrid.appendChild(div);
+
+                    div.querySelector('.remove-btn').addEventListener('click', (ev) => {
+                        const idx = parseInt(ev.target.dataset.index);
+                        uploadedFiles.splice(idx, 1);
+                        rebuildPreviews();
+                        updateGenerateBtn();
+                    });
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function updateGenerateBtn() {
+            const keyOk = useServerProxy || apiKeyInput.value.trim().length > 0;
+            generateBtn.disabled = uploadedFiles.length === 0 || !keyOk;
+        }
+
+        apiKeyInput.addEventListener('input', updateGenerateBtn);
+        clientIdInput.addEventListener('input', updateGenerateBtn);
+
+        // 日志
+        function addLog(message, type = 'normal') {
+            const div = document.createElement('div');
+            div.className = `log-item ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            progressLog.appendChild(div);
+            progressLog.scrollTop = progressLog.scrollHeight;
+        }
+
+        function showError(message) {
+            errorMessage.textContent = '❌ ' + message;
+            errorMessage.classList.add('active');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('active');
+        }
+
+        function updateProgress(percent, status) {
+            progressFill.style.width = percent + '%';
+            progressPercent.textContent = percent + '%';
+            progressStatus.textContent = status;
+        }
+
+        // 上传图片到 Tripo
+        async function uploadImage(file) {
+            addLog(`上传图片: ${file.name}`);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${TRIPO_API_BASE}/upload`, {
+                method: 'POST',
+                headers: {
+                    ...tripAuthHeaders()
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(`上传失败: ${error}`);
+            }
+
+            const data = await response.json();
+            if (data.code !== 0) {
+                throw new Error(`上传失败: ${data.message}`);
+            }
+
+            addLog(`图片上传成功: ${data.data.image_token}`, 'success');
+            return data.data.image_token;
+        }
+
+        // 创建生成任务
+        async function createTask(imageTokens) {
+            addLog('创建 3D 生成任务...');
+
+            let requestBody;
+            
+            if (imageTokens.length === 1) {
+                // 单图模式
+                requestBody = {
+                    type: 'image_to_model',
+                    file: {
+                        type: 'jpg',
+                        file_token: imageTokens[0]
+                    }
+                };
+            } else {
+                // 多图模式
+                requestBody = {
+                    type: 'multiview_to_model',
+                    files: imageTokens.map(token => ({
+                        type: 'jpg',
+                        file_token: token
+                    }))
+                };
+            }
+
+            const response = await fetch(`${TRIPO_API_BASE}/task`, {
+                method: 'POST',
+                headers: {
+                    ...tripAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(`创建任务失败: ${error}`);
+            }
+
+            const data = await response.json();
+            if (data.code !== 0) {
+                throw new Error(`创建任务失败: ${data.message}`);
+            }
+
+            addLog(`任务创建成功: ${data.data.task_id}`, 'success');
+            return data.data.task_id;
+        }
+
+        // 轮询任务状态
+        async function pollTask(taskId) {
+            addLog('开始轮询任务状态...');
+
+            while (true) {
+                const response = await fetch(`${TRIPO_API_BASE}/task/${taskId}`, {
+                    headers: {
+                        ...tripAuthHeaders()
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('查询任务状态失败');
+                }
+
+                const data = await response.json();
+                if (data.code !== 0) {
+                    throw new Error(`查询失败: ${data.message}`);
+                }
+
+                const task = data.data;
+                const status = task.status;
+                const progress = task.progress || 0;
+
+                addLog(`状态: ${status}, 进度: ${progress}%`);
+                updateProgress(progress, `状态: ${status}`);
+
+                if (status === 'success') {
+                    addLog('3D 模型生成成功!', 'success');
+                    return task.output.model;
+                } else if (status === 'failed') {
+                    throw new Error('任务失败: ' + (task.error || '未知错误'));
+                } else if (status === 'cancelled') {
+                    throw new Error('任务已取消');
+                }
+
+                // 等待 2 秒后继续轮询
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+
+        // 主生成流程
+        generateBtn.addEventListener('click', async () => {
+            if (!useServerProxy && !apiKeyInput.value.trim()) {
+                showError('本地打开时请填写 API Key，或部署到网站后使用环境变量');
+                return;
+            }
+
+            if (uploadedFiles.length === 0) {
+                showError('请上传至少一张图片');
+                return;
+            }
+
+            hideError();
+            progressSection.classList.add('active');
+            viewerSection.classList.remove('active');
+            progressLog.innerHTML = '';
+            generateBtn.disabled = true;
+
+            try {
+                // 1. 上传所有图片
+                updateProgress(10, '正在上传图片...');
+                const imageTokens = [];
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    const token = await uploadImage(uploadedFiles[i]);
+                    imageTokens.push(token);
+                    updateProgress(10 + (i + 1) * (20 / uploadedFiles.length), `已上传 ${i + 1}/${uploadedFiles.length} 张图片`);
+                }
+
+                // 2. 创建生成任务
+                updateProgress(35, '正在创建生成任务...');
+                const taskId = await createTask(imageTokens);
+
+                // 3. 轮询等待完成
+                updateProgress(40, '正在生成 3D 模型...');
+                const modelUrl = await pollTask(taskId);
+
+                // 4. 显示模型
+                updateProgress(100, '生成完成!');
+                addLog(`模型 URL: ${modelUrl}`, 'success');
+                
+                currentModelUrl = modelUrl;
+                modelViewer.src = modelUrl;
+                viewerSection.classList.add('active');
+
+            } catch (error) {
+                console.error(error);
+                addLog(error.message, 'error');
+                showError(error.message);
+            } finally {
+                generateBtn.disabled = false;
+            }
+        });
+
+        // 下载模型
+        downloadBtn.addEventListener('click', () => {
+            if (currentModelUrl) {
+                const a = document.createElement('a');
+                a.href = currentModelUrl;
+                a.download = 'model.glb';
+                a.click();
+            }
+        });
+
+        // 查看器控制
+        rotateBtn.addEventListener('click', () => {
+            isRotating = !isRotating;
+            if (isRotating) {
+                modelViewer.setAttribute('auto-rotate', '');
+                rotateBtn.classList.add('active');
+                rotateBtn.textContent = '🔄 自动旋转';
+            } else {
+                modelViewer.removeAttribute('auto-rotate');
+                rotateBtn.classList.remove('active');
+                rotateBtn.textContent = '⏸️ 暂停旋转';
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            modelViewer.cameraOrbit = '45deg 75deg auto';
+            modelViewer.fieldOfView = 'auto';
+        });
+
+        envBtn.addEventListener('click', () => {
+            currentEnv = (currentEnv + 1) % environments.length;
+            modelViewer.setAttribute('environment-image', environments[currentEnv]);
+        });
+
+        updateGenerateBtn();
+    </script>
+
+
+</body></html>
