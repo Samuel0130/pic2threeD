@@ -414,34 +414,16 @@
         <h1>🎨 AI 图片转 3D 模型</h1>
         <p class="subtitle">上传图片，使用 Tripo AI 自动生成 3D 模型</p>
 
-        <!-- API 配置：file:// 本地打开时显示；部署到 Vercel 后使用环境变量 -->
-        <div class="api-config" id="apiConfigPanel">
-            <h3>🔑 API 配置</h3>
-            <p id="apiConfigHint" style="display:none;color:#94a3b8;font-size:0.88rem;line-height:1.55;margin-bottom:14px">
-                已通过服务端环境变量配置 <code style="color:#cbd5e1">TRIPO_API_KEY</code>（必填）与 <code style="color:#cbd5e1">TRIPO_CLIENT_ID</code>（可选），请求经本站 <code style="color:#cbd5e1">/api/tripo-proxy</code> 代理，密钥不会下发到浏览器。
-            </p>
-            <div class="api-inputs" id="apiKeyFields">
-                <div class="input-group">
-                    <label>API Key（仅本地 file 打开时需要）</label>
-                    <input type="password" id="apiKey" placeholder="本地直连 Tripo 时填写 API Key">
-                </div>
-                <div class="input-group">
-                    <label>Client ID（可选，仅本地直连）</label>
-                    <input type="text" id="clientId" placeholder="若 Tripo 要求可填写">
-                </div>
-            </div>
-        </div>
-
         <!-- 上传区域 -->
         <div class="upload-section" id="uploadSection">
             <div class="upload-header">
                 <div class="upload-icon">📸</div>
                 <h3>上传图片</h3>
-                <p>支持 JPG、PNG 格式，可上传 1-8 张图片用于多视角生成</p>
+                <p>支持 JPG、PNG，可上传 1-8 张用于多视角生成</p>
             </div>
             <label class="upload-btn">
                 选择图片
-                <input type="file" class="file-input" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple="">
+                <input type="file" class="file-input" id="fileInput" accept="image/jpeg,image/jpg,image/png" multiple="">
             </label>
             <div class="preview-grid" id="previewGrid"></div>
         </div>
@@ -489,10 +471,6 @@
 
     <script>
         // 元素引用
-        const apiKeyInput = document.getElementById('apiKey');
-        const clientIdInput = document.getElementById('clientId');
-        const apiConfigHint = document.getElementById('apiConfigHint');
-        const apiKeyFields = document.getElementById('apiKeyFields');
         const uploadSection = document.getElementById('uploadSection');
         const fileInput = document.getElementById('fileInput');
         const previewGrid = document.getElementById('previewGrid');
@@ -517,38 +495,13 @@
         let currentEnv = 0;
         const environments = ['neutral', 'legacy', 'night', 'creek', 'dawn'];
 
-        /** 与官方 Python SDK 默认一致：https://github.com/VAST-AI-Research/tripo-python-sdk */
-        const TRIPO_MODEL_VERSION = 'v2.5-20250123';
-
         function tripoApiError(prefix, data) {
             const sug = data.suggestion ? ` — ${data.suggestion}` : '';
             return `${prefix}: ${data.message || JSON.stringify(data)}${sug}`;
         }
 
-        /** http(s) 部署（如 Vercel）走同源代理，密钥在服务端；file:// 本地打开则直连 Tripo 并用手动填写的 Key */
-        const useServerProxy = window.location.protocol === 'http:' || window.location.protocol === 'https:';
-        /** 代理使用固定文件名 /api/tripo-proxy（避免 Vercel 对 api/tripo/[...path] 动态路由 404） */
-        function tripoApiUrl(suffix) {
-            const s = String(suffix).replace(/^\/+/, '');
-            if (useServerProxy) {
-                const p = `v2/openapi/${s}`;
-                return `${window.location.origin}/api/tripo-proxy?p=${encodeURIComponent(p)}`;
-            }
-            return `https://api.tripo3d.ai/v2/openapi/${s}`;
-        }
-
-        if (useServerProxy) {
-            apiConfigHint.style.display = 'block';
-            apiKeyFields.style.display = 'none';
-        }
-
-        function tripAuthHeaders() {
-            if (useServerProxy) return {};
-            const k = apiKeyInput.value.trim();
-            const h = { Authorization: `Bearer ${k}` };
-            const cid = clientIdInput.value.trim();
-            if (cid) h['X-Client-Id'] = cid;
-            return h;
+        function isFileProtocol() {
+            return window.location.protocol === 'file:';
         }
 
         // 拖拽上传
@@ -573,8 +526,8 @@
         });
 
         function handleFiles(files) {
-            const validFiles = Array.from(files).filter(f => 
-                f.type.startsWith('image/') && uploadedFiles.length + 1 <= 8
+            const validFiles = Array.from(files).filter(f =>
+                f.type === 'image/jpeg' || f.type === 'image/jpg' || f.type === 'image/png'
             );
             
             validFiles.forEach(file => {
@@ -633,12 +586,8 @@
         }
 
         function updateGenerateBtn() {
-            const keyOk = useServerProxy || apiKeyInput.value.trim().length > 0;
-            generateBtn.disabled = uploadedFiles.length === 0 || !keyOk;
+            generateBtn.disabled = uploadedFiles.length === 0 || isFileProtocol();
         }
-
-        apiKeyInput.addEventListener('input', updateGenerateBtn);
-        clientIdInput.addEventListener('input', updateGenerateBtn);
 
         // 日志
         function addLog(message, type = 'normal') {
@@ -664,100 +613,44 @@
             progressStatus.textContent = status;
         }
 
-        // 上传图片到 Tripo
-        async function uploadImage(file) {
-            addLog(`上传图片: ${file.name}`);
-            
+        /** 服务端 /api/generate：上传 JPG/PNG 并创建 Tripo 任务（密钥仅在服务器） */
+        async function startGenerateOnServer() {
+            addLog(`提交 ${uploadedFiles.length} 张图片到服务器…`);
             const formData = new FormData();
-            formData.append('file', file);
+            uploadedFiles.forEach((f) => formData.append('file', f, f.name));
 
-            const response = await fetch(tripoApiUrl('upload'), {
+            const response = await fetch(`${window.location.origin}/api/generate`, {
                 method: 'POST',
-                headers: {
-                    ...tripAuthHeaders()
-                },
                 body: formData
             });
 
-            if (!response.ok) {
-                const error = await response.text();
-                throw new Error(`上传失败: ${error}`);
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                const t = await response.text();
+                throw new Error(`服务器响应异常: ${t.slice(0, 200)}`);
             }
-
-            const data = await response.json();
-            if (data.code !== 0) {
-                throw new Error(tripoApiError('上传失败', data));
-            }
-
-            const token = data.data.image_token || data.data.file_token;
-            if (!token) {
-                throw new Error('上传成功但未返回 image_token / file_token');
-            }
-            addLog(`图片上传成功: ${token}`, 'success');
-            return token;
-        }
-
-        // 创建生成任务
-        async function createTask(imageTokens) {
-            addLog('创建 3D 生成任务...');
-
-            let requestBody;
-            
-            if (imageTokens.length === 1) {
-                // 单图模式（须含 model_version，否则易返回 code 1004）
-                requestBody = {
-                    type: 'image_to_model',
-                    model_version: TRIPO_MODEL_VERSION,
-                    file: {
-                        type: 'jpg',
-                        file_token: imageTokens[0]
-                    }
-                };
-            } else {
-                // 多图模式
-                requestBody = {
-                    type: 'multiview_to_model',
-                    model_version: TRIPO_MODEL_VERSION,
-                    files: imageTokens.map((token) => ({
-                        type: 'jpg',
-                        file_token: token
-                    }))
-                };
-            }
-
-            const response = await fetch(tripoApiUrl('task'), {
-                method: 'POST',
-                headers: {
-                    ...tripAuthHeaders(),
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
 
             if (!response.ok) {
-                const error = await response.text();
-                throw new Error(`创建任务失败: ${error}`);
+                const sug = data.suggestion ? ` — ${data.suggestion}` : '';
+                throw new Error((data.error || '生成请求失败') + sug);
             }
-
-            const data = await response.json();
-            if (data.code !== 0) {
-                throw new Error(tripoApiError('创建任务失败', data));
+            if (!data.task_id) {
+                throw new Error('服务器未返回 task_id');
             }
-
-            addLog(`任务创建成功: ${data.data.task_id}`, 'success');
-            return data.data.task_id;
+            addLog(`任务已创建: ${data.task_id}`, 'success');
+            return data.task_id;
         }
 
-        // 轮询任务状态
+        // 轮询任务状态（经本站 /api/task-status，不暴露 Tripo 路径与密钥）
         async function pollTask(taskId) {
             addLog('开始轮询任务状态...');
 
             while (true) {
-                const response = await fetch(tripoApiUrl(`task/${taskId}`), {
-                    headers: {
-                        ...tripAuthHeaders()
-                    }
-                });
+                const response = await fetch(
+                    `${window.location.origin}/api/task-status?id=${encodeURIComponent(taskId)}`
+                );
 
                 if (!response.ok) {
                     throw new Error('查询任务状态失败');
@@ -777,27 +670,31 @@
 
                 if (status === 'success') {
                     addLog('3D 模型生成成功!', 'success');
-                    return task.output.model;
+                    const out = task.output || {};
+                    const modelUrl = out.model || out.pbr_model || out.base_model;
+                    if (!modelUrl) {
+                        throw new Error('任务成功但未返回模型下载地址');
+                    }
+                    return modelUrl;
                 } else if (status === 'failed') {
-                    throw new Error('任务失败: ' + (task.error || '未知错误'));
+                    throw new Error('任务失败: ' + (task.error_msg || task.error || '未知错误'));
                 } else if (status === 'cancelled') {
                     throw new Error('任务已取消');
                 }
 
-                // 等待 2 秒后继续轮询
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise((resolve) => setTimeout(resolve, 2000));
             }
         }
 
         // 主生成流程
         generateBtn.addEventListener('click', async () => {
-            if (!useServerProxy && !apiKeyInput.value.trim()) {
-                showError('本地打开时请填写 API Key，或部署到网站后使用环境变量');
+            if (isFileProtocol()) {
+                showError('请通过网站地址（http/https）打开本页，勿用本地 file 双击打开。');
                 return;
             }
 
             if (uploadedFiles.length === 0) {
-                showError('请上传至少一张图片');
+                showError('请上传至少一张 JPG 或 PNG 图片');
                 return;
             }
 
@@ -808,21 +705,10 @@
             generateBtn.disabled = true;
 
             try {
-                // 1. 上传所有图片
-                updateProgress(10, '正在上传图片...');
-                const imageTokens = [];
-                for (let i = 0; i < uploadedFiles.length; i++) {
-                    const token = await uploadImage(uploadedFiles[i]);
-                    imageTokens.push(token);
-                    updateProgress(10 + (i + 1) * (20 / uploadedFiles.length), `已上传 ${i + 1}/${uploadedFiles.length} 张图片`);
-                }
+                updateProgress(12, '正在上传到服务器并创建任务…');
+                const taskId = await startGenerateOnServer();
 
-                // 2. 创建生成任务
-                updateProgress(35, '正在创建生成任务...');
-                const taskId = await createTask(imageTokens);
-
-                // 3. 轮询等待完成
-                updateProgress(40, '正在生成 3D 模型...');
+                updateProgress(35, '正在生成 3D 模型…');
                 const modelUrl = await pollTask(taskId);
 
                 // 4. 显示模型
