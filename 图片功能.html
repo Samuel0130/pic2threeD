@@ -418,7 +418,7 @@
         <div class="api-config" id="apiConfigPanel">
             <h3>🔑 API 配置</h3>
             <p id="apiConfigHint" style="display:none;color:#94a3b8;font-size:0.88rem;line-height:1.55;margin-bottom:14px">
-                已通过服务端环境变量配置 <code style="color:#cbd5e1">TRIPO_API_KEY</code>（必填）与 <code style="color:#cbd5e1">TRIPO_CLIENT_ID</code>（可选），请求经本站 <code style="color:#cbd5e1">/api/tripo</code> 代理，密钥不会下发到浏览器。
+                已通过服务端环境变量配置 <code style="color:#cbd5e1">TRIPO_API_KEY</code>（必填）与 <code style="color:#cbd5e1">TRIPO_CLIENT_ID</code>（可选），请求经本站 <code style="color:#cbd5e1">/api/tripo-proxy</code> 代理，密钥不会下发到浏览器。
             </p>
             <div class="api-inputs" id="apiKeyFields">
                 <div class="input-group">
@@ -519,9 +519,15 @@
 
         /** http(s) 部署（如 Vercel）走同源代理，密钥在服务端；file:// 本地打开则直连 Tripo 并用手动填写的 Key */
         const useServerProxy = window.location.protocol === 'http:' || window.location.protocol === 'https:';
-        const TRIPO_API_BASE = useServerProxy
-            ? `${window.location.origin}/api/tripo/v2/openapi`
-            : 'https://api.tripo3d.ai/v2/openapi';
+        /** 代理使用固定文件名 /api/tripo-proxy（避免 Vercel 对 api/tripo/[...path] 动态路由 404） */
+        function tripoApiUrl(suffix) {
+            const s = String(suffix).replace(/^\/+/, '');
+            if (useServerProxy) {
+                const p = `v2/openapi/${s}`;
+                return `${window.location.origin}/api/tripo-proxy?p=${encodeURIComponent(p)}`;
+            }
+            return `https://api.tripo3d.ai/v2/openapi/${s}`;
+        }
 
         if (useServerProxy) {
             apiConfigHint.style.display = 'block';
@@ -657,7 +663,7 @@
             const formData = new FormData();
             formData.append('file', file);
 
-            const response = await fetch(`${TRIPO_API_BASE}/upload`, {
+            const response = await fetch(tripoApiUrl('upload'), {
                 method: 'POST',
                 headers: {
                     ...tripAuthHeaders()
@@ -705,7 +711,7 @@
                 };
             }
 
-            const response = await fetch(`${TRIPO_API_BASE}/task`, {
+            const response = await fetch(tripoApiUrl('task'), {
                 method: 'POST',
                 headers: {
                     ...tripAuthHeaders(),
@@ -733,7 +739,7 @@
             addLog('开始轮询任务状态...');
 
             while (true) {
-                const response = await fetch(`${TRIPO_API_BASE}/task/${taskId}`, {
+                const response = await fetch(tripoApiUrl(`task/${taskId}`), {
                     headers: {
                         ...tripAuthHeaders()
                     }

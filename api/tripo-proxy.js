@@ -1,4 +1,5 @@
 const getRawBody = require('raw-body');
+const { URL } = require('url');
 
 const TRIPO_ORIGIN = 'https://api.tripo3d.ai';
 
@@ -9,12 +10,10 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const segments = req.query.path;
-  const pathStr = Array.isArray(segments)
-    ? segments.join('/')
-    : segments || '';
+  const { searchParams } = new URL(req.url || '/', 'http://localhost');
+  let pathStr = (searchParams.get('p') || '').trim().replace(/^\/+/, '');
   if (!pathStr || pathStr.includes('..')) {
-    res.status(400).json({ error: '非法路径' });
+    res.status(400).json({ error: '非法或缺失的路径参数 p' });
     return;
   }
 
