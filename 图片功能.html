@@ -412,7 +412,7 @@
 <body>
     <div class="container">
         <h1>🎨 AI 图片转 3D 模型</h1>
-        <p class="subtitle">上传图片，使用 Tripo AI 自动生成 3D 模型</p>
+        <p class="subtitle">上传图片，使用 AI 自动生成 3D 模型</p>
 
         <!-- 上传区域 -->
         <div class="upload-section" id="uploadSection">
@@ -613,28 +613,68 @@
             progressStatus.textContent = status;
         }
 
-        /** 服务端 /api/generate：上传 JPG/PNG 并创建 Tripo 任务（密钥仅在服务器） */
-        async function startGenerateOnServer() {
-            addLog(`提交 ${uploadedFiles.length} 张图片到服务器…`);
+        /**
+         * 缩小请求体积（Vercel 等对单次请求体约 4.5MB 上限），统一为 JPEG 再提交。
+         */
+        async function compressImageForUpload(file) {
+            const maxEdge = 1920;
+            const jpegQuality = 0.78;
+            try {
+                const bmp = await createImageBitmap(file);
+                const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+                const w = Math.max(1, Math.round(bmp.width * scale));
+                const h = Math.max(1, Math.round(bmp.height * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(bmp, 0, 0, w, h);
+                if (typeof bmp.close === 'function') {
+                    bmp.close();
+                }
+                const blob = await new Promise((resolve) => {
+                    canvas.toBlob(resolve, 'image/jpeg', jpegQuality);
+                });
+                if (!blob) {
+                    throw new Error('toBlob 失败');
+                }
+                const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+                return new File([blob], `${base}.jpg`, { type: 'image/jpeg' });
+            } catch (e) {
+                console.warn('图片压缩失败，改用原文件', e);
+                return file;
+            }
+        }
+
+        /** 服务端 /api/generate：上传图片并创建任务（密钥仅在服务器） */
+        async function startGenerateOnServer(filesToSend) {
+            addLog(`提交 ${filesToSend.length} 张图片到服务器…`);
             const formData = new FormData();
-            uploadedFiles.forEach((f) => formData.append('file', f, f.name));
+            filesToSend.forEach((f) => formData.append('file', f, f.name));
 
             const response = await fetch(`${window.location.origin}/api/generate`, {
                 method: 'POST',
                 body: formData
             });
 
+            const text = await response.text();
             let data;
             try {
-                data = await response.json();
+                data = text ? JSON.parse(text) : {};
             } catch {
-                const t = await response.text();
-                throw new Error(`服务器响应异常: ${t.slice(0, 200)}`);
+                const hint = text.includes('FUNCTION_PAYLOAD_TOO_LARGE') || text.includes('413')
+                    ? '（图片总过大：已自动压缩仍超限，请减少张数或换更小原图）'
+                    : '';
+                throw new Error(`服务器响应异常: ${text.slice(0, 240)}${hint}`);
             }
 
             if (!response.ok) {
                 const sug = data.suggestion ? ` — ${data.suggestion}` : '';
-                throw new Error((data.error || '生成请求失败') + sug);
+                const msg = data.error || data.message || text.slice(0, 200) || '生成请求失败';
+                const big = response.status === 413 || String(text).includes('FUNCTION_PAYLOAD_TOO_LARGE')
+                    ? ' 图片总大小超过平台单次请求限制，请减少张数或换更小的图。'
+                    : '';
+                throw new Error(msg + sug + big);
             }
             if (!data.task_id) {
                 throw new Error('服务器未返回 task_id');
@@ -643,7 +683,7 @@
             return data.task_id;
         }
 
-        // 轮询任务状态（经本站 /api/task-status，不暴露 Tripo 路径与密钥）
+        // 轮询任务状态（经本站 /api/task-status）
         async function pollTask(taskId) {
             addLog('开始轮询任务状态...');
 
@@ -705,8 +745,16 @@
             generateBtn.disabled = true;
 
             try {
-                updateProgress(12, '正在上传到服务器并创建任务…');
-                const taskId = await startGenerateOnServer();
+                updateProgress(5, '正在压缩图片（避免超过上传大小限制）…');
+                const filesToSend = [];
+                for (let i = 0; i < uploadedFiles.length; i++) {
+                    addLog(`处理: ${uploadedFiles[i].name}`);
+                    filesToSend.push(await compressImageForUpload(uploadedFiles[i]));
+                    updateProgress(5 + ((i + 1) / uploadedFiles.length) * 12, `已处理 ${i + 1}/${uploadedFiles.length} 张`);
+                }
+
+                updateProgress(18, '正在上传到服务器并创建任务…');
+                const taskId = await startGenerateOnServer(filesToSend);
 
                 updateProgress(35, '正在生成 3D 模型…');
                 const modelUrl = await pollTask(taskId);
